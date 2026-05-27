@@ -52,6 +52,7 @@ import os
 import time
 from typing import Optional
 
+import anthropic
 from swarms import Agent
 
 from escrow import EscrowEngine, EscrowJob, JobStatus
@@ -153,19 +154,9 @@ Reply ONLY with valid JSON (no markdown, no explanation):
         self._verifier:    Optional[Agent]  = None
         self._synthesizer: Optional[Agent]  = None
 
-        # Decomposer uses Swarms Agent so the full call chain is Swarms-native
-        self._decomposer = Agent(
-            agent_name="brewing-decomposer",
-            system_prompt=(
-                "You are the Brewing SLA Orchestrator goal-decomposition engine. "
-                "You receive a natural-language goal and return a JSON plan of "
-                "2-4 sub-tasks for specialist worker agents. Return ONLY valid JSON."
-            ),
-            model_name="claude-opus-4-6",
-            max_loops=1,
-            verbose=False,
-            output_type="str",
-        )
+        # Decomposer uses the Anthropic SDK directly for clean, undecorated JSON output.
+        # Swarms agent boxes can garble the return value; the SDK gives us raw text.
+        self._anthropic = anthropic.Anthropic()
 
     # ── Swarms-compatible entrypoint ──────────────────────────────────────────
 
@@ -218,30 +209,47 @@ Reply ONLY with valid JSON (no markdown, no explanation):
             _log("🧠  Decomposing goal into governed sub-tasks…")
 
         prompt = self._DECOMPOSE_PROMPT.format(goal=goal)
-        raw = self._decomposer.run(prompt)
+
+        # Use the Anthropic SDK directly — avoids Swarms box decoration garbling the JSON.
+        msg = self._anthropic.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=2048,
+            system=(
+                "You are the Brewing SLA Orchestrator goal-decomposition engine. "
+                "You receive a natural-language goal and return a JSON plan of "
+                "2-4 sub-tasks for specialist worker agents. Return ONLY valid JSON."
+            ),
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = msg.content[0].text.strip()
 
         # Strip markdown fences if the model adds them
-        text = raw.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
             if text.startswith("json"):
-                text = text[4:]
+                text = text[4:].strip()
 
+        # Strategy 1: direct parse
+        parsed = None
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            # Try to extract JSON block from longer response
-            import re
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                try:
-                    parsed = json.loads(match.group())
-                except json.JSONDecodeError:
-                    _err("Decomposition JSON parse failed after fallback extraction.")
-                    return []
-            else:
-                _err("Decomposition produced no parseable JSON.")
-                return []
+            pass
+
+        # Strategy 2: find the first valid JSON object anywhere in the string
+        if parsed is None:
+            decoder = json.JSONDecoder()
+            for i, ch in enumerate(text):
+                if ch == "{":
+                    try:
+                        parsed, _ = decoder.raw_decode(text, i)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+
+        if parsed is None:
+            _err("Decomposition produced no parseable JSON.")
+            return []
 
         subtasks = [
             _SubTask(s["capability"], s["task"], s["rationale"])
@@ -326,22 +334,43 @@ Reply ONLY with valid JSON (no markdown, no explanation):
     # ── Step 3: Verification ──────────────────────────────────────────────────
 
     def _verify(self, job_id: str, task: str, output: str) -> int:
-        verifier = self._get_verifier()
         prompt = (
             f"TASK:\n{task[:500]}\n\n"
             f"WORK OUTPUT (first 1000 chars):\n{output[:1000]}\n\n"
             "Score this 1-10. Reply ONLY with JSON: "
             '{"score": <int 1-10>, "rationale": "<one sentence>"}'
         )
+        # Use Anthropic SDK directly — same reason as decomposer: clean JSON, no box noise.
         try:
-            raw    = verifier.run(prompt).strip()
+            msg = self._anthropic.messages.create(
+                model="claude-opus-4-6",
+                max_tokens=256,
+                system=(
+                    "You are a quality verification agent. "
+                    "Reply ONLY with valid JSON: "
+                    '{"score": <integer 1-10>, "rationale": "<one sentence>"}'
+                ),
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = msg.content[0].text.strip()
             # Strip markdown fences
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
-                    raw = raw[4:]
-            parsed = json.loads(raw)
-            score  = max(1, min(10, int(parsed["score"])))
+                    raw = raw[4:].strip()
+            # Find first JSON object
+            decoder = json.JSONDecoder()
+            parsed  = None
+            for i, ch in enumerate(raw):
+                if ch == "{":
+                    try:
+                        parsed, _ = decoder.raw_decode(raw, i)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+            if parsed is None:
+                parsed = json.loads(raw)
+            score = max(1, min(10, int(parsed["score"])))
             if self.verbose:
                 _log(
                     f"🔍  #{job_id} verified: {score}/10 — "
