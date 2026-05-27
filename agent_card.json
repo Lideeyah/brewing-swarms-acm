@@ -1,0 +1,81 @@
+{
+  "name": "brewing-sla-orchestrator",
+  "display_name": "Brewing SLA Orchestrator",
+  "version": "1.0.0",
+  "tagline": "Governed autonomous clearinghouse agent for AI systems",
+  "description": "Brewing SLA Orchestrator decomposes high-level goals into SLA-enforced sub-tasks, delegates execution to specialist Swarms agents (research · coding · trading · writing), verifies output quality through a governed threshold, and settles escrow-backed payments — fully autonomously, with a full audit trail at every step. Built on the Swarms multi-agent framework with deterministic governance rules, no human-in-the-loop required.",
+
+  "category": "orchestration",
+  "submission_mode": "frenzy",
+  "hackathon": "Swarms ACM",
+
+  "tags": [
+    "orchestration",
+    "autonomous",
+    "sla-enforcement",
+    "escrow",
+    "governance",
+    "multi-agent",
+    "clearinghouse",
+    "settlement",
+    "delegation",
+    "auditability"
+  ],
+
+  "capabilities": [
+    "goal-decomposition",
+    "multi-agent-coordination",
+    "sla-enforcement",
+    "escrow-settlement",
+    "quality-verification",
+    "governed-execution",
+    "on-chain-integration"
+  ],
+
+  "agent_pool": [
+    { "name": "brewing-decomposer",      "role": "goal decomposition → JSON sub-task plan" },
+    { "name": "brewing-worker-research", "role": "analysis, data synthesis, competitive intel" },
+    { "name": "brewing-worker-coding",   "role": "TypeScript/Solana code generation and review" },
+    { "name": "brewing-worker-trading",  "role": "DeFi strategy, risk parameters, market analysis" },
+    { "name": "brewing-worker-writing",  "role": "copywriting, documentation, positioning" },
+    { "name": "brewing-verifier",        "role": "quality gate — scores 1-10, threshold 7/10" },
+    { "name": "brewing-synthesizer",     "role": "final executive deliverable assembly" }
+  ],
+
+  "model": "claude-opus-4-7",
+  "framework": "swarms",
+  "language": "python",
+  "entry_point": "brewing_sla_orchestrator.py",
+  "callable_interface": "BrewingOrchestrator().run(goal: str) -> str",
+
+  "governance": {
+    "verification_threshold": 7,
+    "auto_release": true,
+    "dispute_on_fail": true,
+    "max_subtasks": 4,
+    "sla_seconds": 300,
+    "max_payment_usdc_per_task": 1.0,
+    "treasury_fee_bps": 250
+  },
+
+  "on_chain_integration": {
+    "chain": "Solana",
+    "program_id": "BsFiGxfJ9Spn5kp6bJoCxAwswKRskpTiPodNt8EA6QdM",
+    "usdc_mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "mode": "simulation_default",
+    "live_mode_env": "SOLANA_MODE=1",
+    "note": "Set SOLANA_MODE=1 to route escrow through the deployed Anchor program on Solana devnet"
+  },
+
+  "quick_start": [
+    "git clone https://github.com/Lideeyah/brewing-swarms-acm",
+    "cd brewing-swarms-acm && pip install -r requirements.txt",
+    "cp .env.example .env  # add ANTHROPIC_API_KEY",
+    "python demo.py"
+  ],
+
+  "author": "Lideeyah",
+  "email": "lydiasolomon137@gmail.com",
+  "repo": "https://github.com/Lideeyah/brewing-swarms-acm",
+  "license": "MIT"
+}
