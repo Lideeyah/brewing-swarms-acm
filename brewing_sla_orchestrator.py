@@ -348,8 +348,8 @@ Reply ONLY with valid JSON (no markdown, no explanation):
 
     def _verify(self, job_id: str, task: str, output: str) -> int:
         prompt = (
-            f"TASK:\n{task[:500]}\n\n"
-            f"WORK OUTPUT (first 1000 chars):\n{output[:1000]}\n\n"
+            f"TASK:\n{task[:800]}\n\n"
+            f"WORK OUTPUT:\n{output[:4000]}\n\n"
             "Score this 1-10. Reply ONLY with JSON: "
             '{"score": <int 1-10>, "rationale": "<one sentence>"}'
         )
