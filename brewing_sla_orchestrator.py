@@ -295,10 +295,19 @@ Reply ONLY with valid JSON (no markdown, no explanation):
             _log(f"🤝  #{job.job_id} — worker-{cap} accepted")
 
         # — Worker agent executes task —
+        # We use the Anthropic SDK directly with the worker's system_prompt.
+        # Swarms Agent.run() returns conversation-history strings, not the
+        # clean LLM response; the SDK gives us the actual completion text.
         if self.verbose:
             _log(f"⚙️   #{job.job_id} [{cap}] executing…")
         worker = self._get_worker(cap)
-        output = worker.run(st.task)
+        msg = self._anthropic.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=4096,
+            system=worker.system_prompt,
+            messages=[{"role": "user", "content": st.task}],
+        )
+        output = msg.content[0].text
         st.output = output
 
         # — Verifier scores output —
@@ -401,7 +410,14 @@ Reply ONLY with valid JSON (no markdown, no explanation):
             f"COMPLETED SUB-TASKS ({len(subtasks)}):\n\n"
             + "\n\n─────\n\n".join(parts)
         )
-        return synthesizer.run(prompt)
+        # SDK call — same reason: synthesizer.run() returns history, not clean text.
+        msg = self._anthropic.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=2048,
+            system=synthesizer.system_prompt,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return msg.content[0].text
 
     # ── Agent pool ────────────────────────────────────────────────────────────
 
