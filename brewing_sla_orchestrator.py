@@ -49,6 +49,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import textwrap
 import time
 from typing import Optional
 
@@ -72,6 +74,92 @@ def _ts() -> str:
 def _log(msg: str)  -> None: print(f"[{_ts()}]  {msg}")
 def _warn(msg: str) -> None: print(f"[{_ts()}]  ⚠️  {msg}")
 def _err(msg: str)  -> None: print(f"[{_ts()}]  ❌ {msg}")
+
+
+# ── Display utilities ─────────────────────────────────────────────────────────
+
+_W = 70  # output column width
+
+def _strip_md(text: str) -> str:
+    """Strip markdown syntax for clean terminal rendering."""
+    out = []
+    for line in text.split("\n"):
+        m3 = re.match(r"^#{3,} (.+)$", line)
+        if m3:
+            out.append(f"  {m3.group(1)}")
+            continue
+        m2 = re.match(r"^## (.+)$", line)
+        if m2:
+            out.append(f"  {m2.group(1)}")
+            continue
+        m1 = re.match(r"^# (.+)$", line)
+        if m1:
+            out.append(m1.group(1).upper())
+            continue
+        if re.match(r"^-{3,}$", line.strip()):
+            continue          # drop horizontal rules
+        line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+        line = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"\1", line)
+        line = re.sub(r"^(\s*)[-•] ", r"\1• ", line)
+        out.append(line)
+    # collapse 3+ consecutive blank lines → 1
+    result, prev_blank = [], 0
+    for ln in out:
+        blank = not ln.strip()
+        if blank:
+            prev_blank += 1
+        else:
+            prev_blank = 0
+        if prev_blank <= 1:
+            result.append(ln)
+    return "\n".join(result).strip()
+
+
+def _parse_sections(text: str) -> dict[str, str]:
+    """Split '## Header\\nContent' document into a {header: content} dict."""
+    sections: dict[str, str] = {}
+    current: str | None = None
+    buf: list[str] = []
+    for line in text.split("\n"):
+        m = re.match(r"^## (.+)$", line)
+        if m:
+            if current is not None:
+                sections[current] = "\n".join(buf).strip()
+            current, buf = m.group(1).strip(), []
+        else:
+            buf.append(line)
+    if current is not None:
+        sections[current] = "\n".join(buf).strip()
+    return sections
+
+
+def _box(content: str, title: str = "", width: int = _W) -> None:
+    """Render content inside a Unicode box, printed to stdout."""
+    iw   = width - 8          # inner text width
+    dash = "─" * (width - 4)  # dash run between ┌ and ┐
+    if title:
+        t  = f" {title} "
+        ld = (len(dash) - len(t)) // 2
+        rd = len(dash) - len(t) - ld
+        top = f"  ┌{'─'*ld}{t}{'─'*rd}┐"
+    else:
+        top = f"  ┌{dash}┐"
+    blank_row = f"  │{' ' * (width - 4)}│"
+    print(top)
+    print(blank_row)
+    for para in content.split("\n\n"):
+        if not para.strip():
+            print(blank_row)
+            continue
+        for raw in para.split("\n"):
+            stripped = raw.strip()
+            if not stripped:
+                print(blank_row)
+                continue
+            for wline in textwrap.wrap(stripped, width=iw) or [""]:
+                print(f"  │  {wline:<{iw}}  │")
+        print(blank_row)
+    print(f"  └{dash}┘")
 
 
 # ── Internal subtask container ────────────────────────────────────────────────
@@ -443,52 +531,99 @@ Reply ONLY with valid JSON (no markdown, no explanation):
     # ── Display ───────────────────────────────────────────────────────────────
 
     def _banner(self, goal: str) -> None:
-        g = self.governance.config
+        g   = self.governance.config
+        div = "─" * (_W - 4)
         print()
-        print("╔══════════════════════════════════════════════════════════════════╗")
-        print("║     BREWING SLA ORCHESTRATOR  —  Governed Multi-Agent           ║")
-        print("║     Swarms ACM  ·  Frenzy Mode                                  ║")
-        print("╚══════════════════════════════════════════════════════════════════╝")
+        print("╔" + "═" * (_W - 2) + "╗")
+        print("║" + "  BREWING SLA ORCHESTRATOR  —  Governed Multi-Agent".ljust(_W - 2) + "║")
+        print("║" + "  Swarms ACM  ·  Frenzy Mode".ljust(_W - 2) + "║")
+        print("╚" + "═" * (_W - 2) + "╝")
         print()
-        _log(f"Goal       : {goal}")
+        _log(f"Goal       : {goal[:80]}{'…' if len(goal) > 80 else ''}")
         _log(f"SLA        : {g.sla_seconds}s per sub-task")
         _log(f"Threshold  : {g.verification_threshold}/10 quality gate")
         _log(f"Capabilities: {', '.join(g.approved_capabilities)}")
         print()
 
     def _print_summary(self, completed: list[_SubTask], synthesis: str) -> None:
-        total = sum(CAPABILITY_PAYMENTS.get(s.capability, 0.10) for s in completed)
         all_jobs = self.escrow.all_jobs()
         disputed = [j for j in all_jobs if j.status == JobStatus.DISPUTED]
+        total    = sum(CAPABILITY_PAYMENTS.get(s.capability, 0.10) for s in completed)
+        fees     = self.escrow.collected_fees()
+
+        sections = _parse_sections(synthesis)
+        W = _W
 
         print()
-        print("═══════════════════════ ORCHESTRATOR RESULT ═══════════════════════")
+        print("─" * W)
+        print("  ORCHESTRATOR RESULT")
+        print("─" * W)
+
+        # — Goal ——————————————————————————————————————————————————
+        goal_text = _strip_md(sections.get("Goal", ""))
+        if goal_text:
+            print()
+            print("  GOAL")
+            for line in textwrap.wrap(goal_text, W - 4):
+                print(f"  {line}")
+
+        # — Completed work (built from data, not synthesizer text) ——
         print()
-        print(synthesis)
+        print("  COMPLETED WORK")
+        for st in completed:
+            jid   = st.job.job_id if st.job else "N/A"
+            rat   = st.rationale[:64] if st.rationale else ""
+            print(f"  ✅  [{st.capability.upper():<10}]  #{jid}  {st.score}/10")
+            print(f"       {rat}")
+        for j in disputed:
+            print(f"  ⚠️   [{j.capability.upper():<10}]  #{j.job_id}  {j.verification_score}/10  (disputed — escrow held)")
+
+        # — Synthesis note ————————————————————————————————————————
+        synth_text = _strip_md(sections.get("Synthesis", ""))
+        if synth_text:
+            print()
+            print("  SYNTHESIS")
+            for line in synth_text.split("\n"):
+                if line.strip():
+                    for wl in textwrap.wrap(line.strip(), W - 4):
+                        print(f"  {wl}")
+
+        # — Final Deliverable in a box ————————————————————————————
+        deliverable = _strip_md(sections.get("Final Deliverable", ""))
+        if deliverable:
+            print()
+            _box(deliverable, title="FINAL DELIVERABLE", width=W)
+
+        # — Escrow ledger ——————————————————————————————————————————
         print()
-        print("════════════════════════ ESCROW LEDGER ════════════════════════════")
+        print("─" * W)
+        print("  ESCROW LEDGER")
+        print("─" * W)
+        print()
+        hdr = f"  {'JOB ID':<12}  {'TYPE':<12}  {'SCORE':<7}  {'STATUS':<16}  PAYMENT"
+        print(hdr)
+        print("  " + "─" * (W - 4))
         for st in completed:
             j = st.job
             if j:
                 print(
-                    f"  #{j.job_id}  [{st.capability:<10}]  "
-                    f"score={st.score}/10  status={j.status.value:<16}  "
-                    f"payment={j.payment_usdc} USDC"
+                    f"  #{j.job_id:<11}  {st.capability:<12}  {st.score}/10   "
+                    f"  {'Completed':<16}  {j.payment_usdc:.4f} USDC  ✅"
                 )
         for j in disputed:
             print(
-                f"  #{j.job_id}  [{j.capability:<10}]  "
-                f"score={j.verification_score}/10  status={j.status.value:<16}  "
-                f"ESCROWED (not released)"
+                f"  #{j.job_id:<11}  {j.capability:<12}  {j.verification_score}/10   "
+                f"  {'Disputed':<16}  {j.payment_usdc:.4f} USDC  ⚠️  held"
             )
+        print("  " + "─" * (W - 4))
         print()
-        fees = self.escrow.collected_fees()
         print(
-            f"  Settled : {total:.2f} USDC  |  "
-            f"Treasury fees : {fees:.4f} USDC  |  "
-            f"Disputed : {len(disputed)} job(s)"
+            f"  Settled  {total:.4f} USDC"
+            f"   ·   Treasury  {fees:.4f} USDC"
+            f"   ·   Disputed  {len(disputed)} job(s)"
         )
-        print("═══════════════════════════════════════════════════════════════════")
+        print()
+        print("─" * W)
         print()
 
 

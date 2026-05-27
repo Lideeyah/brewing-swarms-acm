@@ -1,33 +1,16 @@
 """
-Brewing SLA Orchestrator — Deterministic Demo
+Brewing SLA Orchestrator — Demo Runner
 ─────────────────────────────────────────────────────────────────────────────
 Runs the complete governed execution lifecycle end-to-end.
 
 No live Solana RPC required — escrow is simulated deterministically.
-Real Claude API calls are made via Swarms agents (ANTHROPIC_API_KEY required).
-
-Demo flow
-─────────
-  1.  Orchestrator receives a natural-language goal
-  2.  Decomposer (Swarms Agent) breaks it into 2-3 governed sub-tasks
-  3.  GovernanceEngine validates each: capability approved? payment within cap?
-  4.  EscrowEngine posts each job — USDC locked with SLA timer
-  5.  Worker agent (Swarms Agent, capability-specialised) executes the task
-  6.  VerifierAgent (Swarms Agent) scores output 1-10
-  7.  GovernanceEngine gate: score ≥ threshold → release; below → Disputed
-  8.  EscrowEngine settles: payment released or escrowed in Disputed state
-  9.  SynthesizerAgent assembles final executive deliverable
-  10. Full SLA ledger printed with job IDs, scores, statuses, sim tx hashes
+Real Claude API calls are made for all agents (ANTHROPIC_API_KEY required).
 
 Usage
 ─────
-  python demo.py
-  python demo.py "Your custom goal here"
-
-Environment
-───────────
-  ANTHROPIC_API_KEY  — required (real Claude API calls via Swarms)
-  SOLANA_MODE=1      — optional (route escrow through live Solana program)
+  python3 demo.py
+  python3 demo.py "Your custom goal here"
+  python3 demo_script.py    ← presenter script with narration cues
 """
 from __future__ import annotations
 
@@ -35,13 +18,14 @@ import os
 import sys
 import time
 
-from brewing_sla_orchestrator import BrewingOrchestrator
+from brewing_sla_orchestrator import BrewingOrchestrator, _W
 from escrow import JobStatus
 from governance import GovernanceConfig
 
 # ── Pre-canned demo goals ─────────────────────────────────────────────────────
+
 _DEMO_GOALS = [
-    # Goal 0 — default: positions Brewing in the agent-framework landscape
+    # Goal 0 — default: competitive positioning
     (
         "Research what makes a strong autonomous AI agent marketplace submission, "
         "then write a 200-word positioning brief for the Brewing SLA Orchestrator "
@@ -62,6 +46,8 @@ _DEMO_GOALS = [
 ]
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def _check_env() -> None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print()
@@ -73,25 +59,43 @@ def _check_env() -> None:
 
 
 def _print_header() -> None:
+    W = _W
     print()
-    print("╔══════════════════════════════════════════════════════════════════╗")
-    print("║    BREWING SLA ORCHESTRATOR  ·  Swarms ACM Demo                 ║")
-    print("║    Governed Autonomous Clearinghouse for AI Systems              ║")
-    print("╠══════════════════════════════════════════════════════════════════╣")
-    print("║  Framework  : Swarms multi-agent (claude-opus-4-7)              ║")
-    print("║  Escrow     : Simulated (SOLANA_MODE=1 for live Solana)         ║")
-    print("║  Mode       : Frenzy — deterministic, reproducible              ║")
-    print("╚══════════════════════════════════════════════════════════════════╝")
+    print("╔" + "═" * (W - 2) + "╗")
+    print("║" + "  BREWING SLA ORCHESTRATOR  ·  Swarms ACM Demo".ljust(W - 2) + "║")
+    print("║" + "  Governed Autonomous Clearinghouse for AI Systems".ljust(W - 2) + "║")
+    print("╠" + "═" * (W - 2) + "╣")
+    print("║" + "  Framework  : Swarms multi-agent (claude-opus-4-6)".ljust(W - 2) + "║")
+    print("║" + "  Escrow     : Simulated  (SOLANA_MODE=1 for live on-chain)".ljust(W - 2) + "║")
+    print("║" + "  Mode       : Frenzy — deterministic, reproducible".ljust(W - 2) + "║")
+    print("╚" + "═" * (W - 2) + "╝")
     print()
 
 
-def _print_escrow_audit(orchestrator: BrewingOrchestrator) -> None:
+def _print_goal(goal: str) -> None:
+    W = _W
+    print("  GOAL")
+    print("  " + "─" * (W - 4))
+    import textwrap
+    for line in textwrap.wrap(goal, W - 4):
+        print(f"  {line}")
+    print("  " + "─" * (W - 4))
     print()
-    print("── On-Chain Escrow State Audit ─────────────────────────────────────")
-    print()
+
+
+def _print_escrow_audit(orchestrator: BrewingOrchestrator, elapsed: float) -> None:
+    W   = _W
     jobs = orchestrator.escrow.all_jobs()
+
+    print()
+    print("─" * W)
+    print("  ON-CHAIN ESCROW AUDIT")
+    print("─" * W)
+    print()
+
     if not jobs:
-        print("  (no jobs in ledger)")
+        print("  No jobs in ledger.")
+        print()
         return
 
     for job in jobs:
@@ -99,55 +103,50 @@ def _print_escrow_audit(orchestrator: BrewingOrchestrator) -> None:
             not job.sla_breached
             or job.status in (JobStatus.COMPLETED, JobStatus.DISPUTED)
         )
-        icon = "✅" if job.status == JobStatus.COMPLETED else (
-               "⚠️ " if job.status == JobStatus.DISPUTED else "🕐")
-
-        print(f"  {icon} #{job.job_id}  [{job.capability:<10}]  {job.status.value}")
-        print(
-            f"     payment = {job.payment_usdc} USDC  "
-            f"|  score = {job.verification_score}/10  "
-            f"|  SLA {'✅ met' if sla_ok else '⚠️  BREACHED'}"
+        icon = (
+            "✅" if job.status == JobStatus.COMPLETED else
+            "⚠️ " if job.status == JobStatus.DISPUTED else
+            "🕐"
         )
-        print(f"     sim_tx_post    = {job.tx_signatures.get('post', '—')}")
+        status_label = job.status.value
+        sla_label    = "SLA met" if sla_ok else "SLA BREACHED"
+
+        print(f"  {icon}  #{job.job_id}  ·  {job.capability.upper()}  ·  {status_label}  ·  {sla_label}")
+        print(f"       Score    : {job.verification_score}/10")
+        print(f"       Payment  : {job.payment_usdc} USDC")
+        tx_post = job.tx_signatures.get("post", "—")
+        print(f"       tx_post  : {tx_post}")
         if "release" in job.tx_signatures:
-            print(f"     sim_tx_release = {job.tx_signatures['release']}")
+            print(f"       tx_settle: {job.tx_signatures['release']}")
         if "dispute" in job.tx_signatures:
-            print(f"     sim_tx_dispute = {job.tx_signatures['dispute']}")
+            print(f"       tx_dispute: {job.tx_signatures['dispute']}")
         print()
 
-    total_settled  = sum(
-        j.payment_usdc for j in jobs if j.status == JobStatus.COMPLETED
-    )
-    total_disputed = sum(
-        j.payment_usdc for j in jobs if j.status == JobStatus.DISPUTED
-    )
-    fees = orchestrator.escrow.collected_fees()
+    total_settled  = sum(j.payment_usdc for j in jobs if j.status == JobStatus.COMPLETED)
+    total_disputed = sum(j.payment_usdc for j in jobs if j.status == JobStatus.DISPUTED)
+    fees           = orchestrator.escrow.collected_fees()
 
-    print(f"  Protocol fees collected : {fees:.4f} USDC  (2.5% treasury)")
-    print(f"  Total settled           : {total_settled:.2f} USDC")
-    print(f"  Total in dispute        : {total_disputed:.2f} USDC  (escrowed)")
+    print("  " + "─" * (W - 4))
+    print(f"  Settled   {total_settled:.4f} USDC"
+          f"   ·   Treasury  {fees:.4f} USDC"
+          f"   ·   Disputed  {total_disputed:.4f} USDC")
+    print("  " + "─" * (W - 4))
     print()
-    print("─────────────────────────────────────────────────────────────────────")
+    print(f"  Completed in {elapsed:.1f}s")
     print()
-    print("  ✅  Demo complete.")
-    print()
-    print("  Next steps:")
-    print("    • Set SOLANA_MODE=1 and fund a Solana devnet wallet to run")
-    print("      the same flow with real USDC escrow on-chain.")
-    print("    • Swap the goal for any natural-language instruction and the")
-    print("      orchestrator will decompose, delegate, verify, and settle it.")
+    print("─" * W)
     print()
 
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def run_demo(goal: str | None = None) -> None:
     _check_env()
     _print_header()
 
     effective_goal = goal or _DEMO_GOALS[0]
-    print(f"  Goal: {effective_goal}")
-    print()
+    _print_goal(effective_goal)
 
-    # Demo uses slightly tighter config for speed (6/10 threshold, 120s SLA)
     config = GovernanceConfig(
         verification_threshold=6,
         sla_seconds=120,
@@ -157,15 +156,13 @@ def run_demo(goal: str | None = None) -> None:
 
     start   = time.time()
     agent   = BrewingOrchestrator(governance_config=config, verbose=True)
-    _result = agent.run(effective_goal)
+    agent.run(effective_goal)
     elapsed = time.time() - start
 
-    print(f"  ⏱️   Orchestration completed in {elapsed:.1f}s")
-    _print_escrow_audit(agent)
+    _print_escrow_audit(agent, elapsed)
 
 
 if __name__ == "__main__":
-    # Load .env if present
     try:
         from dotenv import load_dotenv
         load_dotenv()
