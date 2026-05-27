@@ -74,9 +74,10 @@ class EscrowEngine:
     VERIFICATION_THRESHOLD: int   = 7
     DEFAULT_SLA_SECONDS:    int   = 300  # 5 minutes
 
-    def __init__(self) -> None:
-        self._jobs:           dict[str, EscrowJob] = {}
-        self._collected_fees: float                = 0.0
+    def __init__(self, verification_threshold: int = VERIFICATION_THRESHOLD) -> None:
+        self._jobs:                   dict[str, EscrowJob] = {}
+        self._collected_fees:         float                = 0.0
+        self._verification_threshold: int                  = verification_threshold
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -129,7 +130,7 @@ class EscrowEngine:
         job.work_output        = output
         job.verification_score = score
 
-        if score >= self.VERIFICATION_THRESHOLD:
+        if score >= self._verification_threshold:
             job.status = JobStatus.PENDING_RELEASE
             job.tx_signatures["submit"] = f"sim_submit_{job_id}_score_{score}_PASS"
         else:

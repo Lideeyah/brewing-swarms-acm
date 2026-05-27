@@ -146,7 +146,11 @@ Reply ONLY with valid JSON (no markdown, no explanation):
         verbose: bool = True,
     ) -> None:
         self.governance = GovernanceEngine(governance_config)
-        self.escrow     = EscrowEngine()
+        # Thread the governance threshold into escrow so submit_work and
+        # validate_release use the same pass/fail boundary.
+        self.escrow = EscrowEngine(
+            verification_threshold=self.governance.config.verification_threshold
+        )
         self.verbose    = verbose
 
         # Lazy agent pool — built on first use, reused within session
