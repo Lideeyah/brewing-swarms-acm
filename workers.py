@@ -18,6 +18,9 @@ Synthesizer — assembles the final executive deliverable
 """
 from __future__ import annotations
 
+import litellm
+litellm.drop_params = True   # claude-opus-4-7 rejects `temperature`; drop it silently
+
 from swarms import Agent
 
 # ── Payment schedule (mirrors demo/orchestrator-agent.ts CAPABILITY_MAP) ─────
