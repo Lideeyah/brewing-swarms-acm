@@ -161,7 +161,7 @@ Reply ONLY with valid JSON (no markdown, no explanation):
                 "You receive a natural-language goal and return a JSON plan of "
                 "2-4 sub-tasks for specialist worker agents. Return ONLY valid JSON."
             ),
-            model_name="claude-opus-4-7",
+            model_name="claude-opus-4-6",
             max_loops=1,
             verbose=False,
             output_type="str",

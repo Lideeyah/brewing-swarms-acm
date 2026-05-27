@@ -18,10 +18,10 @@ Synthesizer — assembles the final executive deliverable
 """
 from __future__ import annotations
 
-import litellm
-litellm.drop_params = True   # claude-opus-4-7 rejects `temperature`; drop it silently
-
 from swarms import Agent
+
+# claude-opus-4-6: Opus-tier, accepts temperature — compatible with Swarms/LiteLLM
+_MODEL = "claude-opus-4-6"
 
 # ── Payment schedule (mirrors demo/orchestrator-agent.ts CAPABILITY_MAP) ─────
 CAPABILITY_PAYMENTS: dict[str, float] = {
@@ -147,7 +147,7 @@ def build_worker(capability: str) -> Agent:
     return Agent(
         agent_name=f"brewing-worker-{capability}",
         system_prompt=_WORKER_PROMPTS[capability],
-        model_name="claude-opus-4-7",
+        model_name=_MODEL,
         max_loops=1,
         verbose=False,
         output_type="str",
@@ -159,7 +159,7 @@ def build_verifier() -> Agent:
     return Agent(
         agent_name="brewing-verifier",
         system_prompt=_VERIFIER_PROMPT,
-        model_name="claude-opus-4-7",
+        model_name=_MODEL,
         max_loops=1,
         verbose=False,
         output_type="str",
@@ -171,7 +171,7 @@ def build_synthesizer() -> Agent:
     return Agent(
         agent_name="brewing-synthesizer",
         system_prompt=_SYNTHESIZER_PROMPT,
-        model_name="claude-opus-4-7",
+        model_name=_MODEL,
         max_loops=1,
         verbose=False,
         output_type="str",
