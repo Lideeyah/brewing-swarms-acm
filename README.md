@@ -420,10 +420,22 @@ Every state transition has a corresponding on-chain instruction:
 
 ```
 ANTHROPIC_API_KEY   required — Claude API key
-SOLANA_MODE         0 (default simulation) | 1 (live Solana devnet)
-RPC_URL             Solana RPC (only for SOLANA_MODE=1)
-POSTER_SECRET_KEY   Solana keypair JSON array (only for SOLANA_MODE=1)
 ```
+
+<details>
+<summary>On-chain mode (optional)</summary>
+
+Set `SOLANA_MODE=1` to route escrow through the deployed Anchor program on Solana devnet instead of the in-process simulation.
+
+```
+SOLANA_MODE         1
+RPC_URL             Solana RPC endpoint
+POSTER_SECRET_KEY   Solana keypair JSON array
+```
+
+Program: `BsFiGxfJ9Spn5kp6bJoCxAwswKRskpTiPodNt8EA6QdM`
+
+</details>
 
 ---
 
